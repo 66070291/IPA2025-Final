@@ -54,7 +54,7 @@ current_ip = None      # จะเก็บ IP ที่ผู้ใช้เล
 
 while True:
     try:
-        time.sleep(0.5)
+        time.sleep(0.1)
         getParameters = {"roomId": roomIdToGetMessages, "max": 1}
         getHTTPHeader = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
@@ -138,6 +138,84 @@ while True:
             else: # len(args) > 2
                 responseMessage = "Error: Too many arguments."
                 
+            # --- B. EXECUTE COMMAND (ถ้ามี) ---
+            if command:
+                student_id = MY_STUDENT_ID # (student_id ยังคงใช้ MY_STUDENT_ID)
+
+                # -- NETCONF / RESTCONF Commands --
+                if command in ["create", "delete", "enable", "disable", "status"]:
+                    
+                    # Guard 1: เช็คว่าเลือก method หรือยัง
+                    if current_method is None:
+                        responseMessage = "Error: No method specified"
+                    
+                    # Guard 2: เช็คว่า IP (current_ip) ถูกตั้งค่าหรือยัง
+                    elif current_ip is None:
+                         # สภาวะนี้ไม่ควรเกิดถ้า parser ทำงานถูก แต่ดักไว้ก่อน
+                        responseMessage = "Error: No IP specified"
+                    
+                    # --- 💡 NETCONF LOGIC 💡 ---
+                    elif current_method == "netconf":
+                        print(f"Running '{command}' on {current_ip} using NETCONF...")
+                        
+                        if command == "create":
+                            current_status = netconf_final.status(current_ip, student_id)
+                            if current_status == "not_exist":
+                                last_three_digits = student_id[-3:] 
+                                ip_x = last_three_digits[0]         
+                                ip_y = last_three_digits[1:]        
+                                create_result = netconf_final.create(current_ip, student_id, ip_x, ip_y)
+                                if create_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is created successfully using Netconf"
+                                else:
+                                    responseMessage = f"Error: {create_result} (using Netconf)"
+                            else:
+                                responseMessage = f"Cannot create: Interface loopback {student_id} already created (checked by Netconf)"
+
+                        elif command == "delete":
+                            current_status = netconf_final.status(current_ip, student_id)
+                            if current_status != "not_exist":
+                                delete_result = netconf_final.delete(current_ip, student_id)
+                                if delete_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is deleted successfully using Netconf"
+                                else:
+                                    responseMessage = f"Error: {delete_result} (using Netconf)"
+                            else:
+                                responseMessage = f"Cannot delete: Interface loopback {student_id} (checked by Netconf)"
+                        
+                        elif command == "enable":
+                            current_status = netconf_final.status(current_ip, student_id)
+                            if current_status != "not_exist":
+                                enable_result = netconf_final.enable(current_ip, student_id)
+                                if enable_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is enabled successfully using Netconf"
+                                else:
+                                    responseMessage = f"Error: {enable_result} (using Netconf)"
+                            else:
+                                responseMessage = f"Cannot enable: Interface loopback {student_id} (checked by Netconf)"
+
+                        elif command == "disable":
+                            current_status = netconf_final.status(current_ip, student_id)
+                            if current_status != "not_exist":
+                                disable_result = netconf_final.disable(current_ip, student_id)
+                                if disable_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is shutdowned successfully using Netconf"
+                                else:
+                                    responseMessage = f"Error: {disable_result} (using Netconf)"
+                            else:
+                                responseMessage = f"Cannot shutdown: Interface loopback {student_id} (checked by Netconf)"
+                        
+                        elif command == "status":
+                            current_status = netconf_final.status(current_ip, student_id)
+                            if current_status == "exists_up_up":
+                                responseMessage = f"Interface loopback {student_id} is enabled (checked by Netconf)"
+                            elif current_status == "exists_down_down":
+                                responseMessage = f"Interface loopback {student_id} is disabled (checked by Netconf)"
+                            elif current_status == "not_exist":
+                                responseMessage = f"No Interface loopback {student_id} (checked by Netconf)"
+                            else:
+                                responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Netconf)"
+
             if responseMessage:
                 HTTPHeaders = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
