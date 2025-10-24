@@ -1,0 +1,5 @@
+Value BannerText (.*)
+
+Start
+  ^\s*${BannerText}(\s*Error: No banner configured)? -> Record
+  ^\s*${BannerText} -> Record

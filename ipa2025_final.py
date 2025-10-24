@@ -49,8 +49,8 @@ roomIdToGetMessages = (
 
 # --- BOT STATE VARIABLES ---
 last_processed_message_id = None
-current_method = None  # จะเก็บ 'netconf' หรือ 'restconf'
-current_ip = None      # จะเก็บ IP ที่ผู้ใช้เลือก
+current_method = None  
+current_ip = None      
 # ---------------------------
 
 while True:
@@ -91,10 +91,10 @@ while True:
 
         if message.startswith(f"/{MY_STUDENT_ID} "):
             
-            args = message.split()[1:] # แยกอาร์กิวเมนต์
-            command = None             # ตัวแปรเก็บคำสั่งที่จะรัน
-            responseMessage = ""       # ข้อความที่จะตอบกลับ
-            target_ip = current_ip # ใช้ IP ล่าสุดเป็น default
+            args = message.split()[1:] 
+            command = None             
+            responseMessage = ""       
+            target_ip = current_ip 
 
             # --- A. PARSE COMMANDS ---
             if len(args) == 0:
@@ -129,15 +129,15 @@ while True:
                                             "gigabit_status", "showrun", "motd"]
                                             
                     if potential_cmd in allowed_cmds_with_ip:
-                        target_ip = potential_ip  # --- 💡 กำหนด IP เป้าหมาย ---
-                        current_ip = potential_ip # --- 💡 จำ IP นี้ไว้ใช้ครั้งหน้า ---
+                        target_ip = potential_ip  
+                        current_ip = potential_ip 
 
                         if potential_cmd == "motd":
-                            if len(args) > 2: command = "motd_set"; motd_text = parts[3]
+                            if len(args) > 2: command = "motd_set"; motd_text = " ".join(args[2:])
                             else: command = "motd_get"
-                        else: # Other commands
+                        else: 
                             if len(args) > 2: responseMessage = f"Error: Too many arguments for command '{potential_cmd}'."
-                            else: command = potential_cmd # --- ตั้งค่า command ที่จะรัน ---
+                            else: command = potential_cmd 
                     else: 
                         responseMessage = f"Error: Unknown command '{potential_cmd}' or command does not support IP."
                 else: 
@@ -145,7 +145,7 @@ while True:
             # --- B. EXECUTE COMMAN ---
             if command:
                 student_id = MY_STUDENT_ID 
-                
+
                 # -- NETCONF / RESTCONF Commands --
                 ip_required_commands = ["create", "delete", "enable", "disable", "status", 
                                        "gigabit_status", "showrun", "motd_get", "motd_set"]
@@ -241,8 +241,23 @@ while True:
                         elif current_status == "exists_down_down": responseMessage = f"Interface loopback {student_id} is disabled (checked by Restconf)"
                         elif current_status == "not_exist": responseMessage = f"No Interface loopback {student_id} (checked by Restconf)"
                         else: responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Restconf)"
-
                 
+                # --- MOTD Commands ---
+                elif command == "motd_set":
+                    print(f"Running 'motd_set' on {target_ip} using Ansible...")
+                    set_result = ansible_final.set_motd(target_ip, motd_text)
+                    if set_result.startswith("ok"): responseMessage = "Ok: success"
+                    else: responseMessage = set_result # Return the error message from Ansible
+                
+                elif command == "motd_get":
+                     print(f"Running 'motd_get' on {target_ip} using Netmiko...")
+                     responseMessage = netmiko_final.get_motd(target_ip)
+
+                # --- gigabit status Commands ---
+                elif command == "gigabit_status":
+                    print(f"Running 'gigabit_status' on {target_ip} using Netmiko...")
+                    responseMessage = netmiko_final.gigabit_status(target_ip)
+
                 # --- showrun ansible ---
                 elif command == "showrun":
                     print(f"Running 'showrun' on {target_ip} using Ansible...")
@@ -253,9 +268,8 @@ while True:
                 HTTPHeaders = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
                 if command == "showrun" and responseMessage == 'ok':
-                    # Determine inventory hostname based on target_ip (Simple mapping for now)
-                    # THIS IS A SIMPLIFICATION - A real app might need a proper inventory lookup
-                    inventory_hostname = "CSR1KV" if target_ip == "192.168.1.101" else target_ip # Basic guess
+
+                    inventory_hostname = "CSR1KV" if target_ip == "192.168.1.101" else target_ip 
                     
                     filename = f"show_run_{MY_STUDENT_ID}_{inventory_hostname}.txt"
                     
@@ -266,7 +280,6 @@ while True:
                         postData = postData_multipart
                         HTTPHeaders["Content-Type"] = postData_multipart.content_type
                         
-                        # Store the actual message to print upon success
                         actual_response_text = f"showrun file {filename} attached" 
                         
                     except Exception as e:
@@ -274,20 +287,19 @@ while True:
                         responseMessage = f"Error: Ansible OK, but failed to read file {filename}."
                         postData = json.dumps({"roomId": roomIdToGetMessages, "text": responseMessage})
                         HTTPHeaders["Content-Type"] = "application/json"
-                        actual_response_text = responseMessage # Store error message
+                        actual_response_text = responseMessage 
                 else:
                     postData = json.dumps({"roomId": roomIdToGetMessages, "text": responseMessage})
                     HTTPHeaders["Content-Type"] = "application/json"
-                    actual_response_text = responseMessage # Store the message
+                    actual_response_text = responseMessage 
 
                 # --- Post the message ---
                 r = requests.post("https://webexapis.com/v1/messages", data=postData, headers=HTTPHeaders)
                 
                 if not r.status_code == 200:
                     print(f"Error posting reply to Webex: {r.status_code}, {r.text}")
-                    # Don't update last_processed_message_id on post failure
                 else:
-                    print(f"Successfully posted response: {actual_response_text}") # Print the actual text sent
+                    print(f"Successfully posted response: {actual_response_text}") 
                     response_json = r.json()
                     last_processed_message_id = response_json["id"]
 

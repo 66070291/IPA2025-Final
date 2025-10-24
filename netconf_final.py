@@ -14,7 +14,6 @@ def _get_connection(host_ip):
     )
 
 def _netconf_edit_config(m, netconf_config):
-    # Helper function for edit-config
     return m.edit_config(target="running", config=netconf_config, default_operation="merge")
 
 def create(host_ip, student_id, ip_x, ip_y):
