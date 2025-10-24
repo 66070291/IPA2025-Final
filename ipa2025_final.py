@@ -31,12 +31,26 @@ if MY_STUDENT_ID.startswith("<!!!"):
 #######################################################################################
 # 3. Prepare parameters get the latest message for messages API.
 
+# 3. Helper function to check for valid IP
+def is_ip_address(s):
+    parts = s.split('.')
+    if len(parts) != 4:
+        return False
+    try:
+        return all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+    except ValueError:
+        return False
+
 # Defines a variable that will hold the roomId
 roomIdToGetMessages = (
     "Y2lzY29zcGFyazovL3VybjpURUFNOnVzLXdlc3QtMl9yL1JPT00vYmQwODczMTAtNmMyNi0xMWYwLWE1MWMtNzkzZDM2ZjZjM2Zm"
 )
 
+# --- BOT STATE VARIABLES ---
 last_processed_message_id = None
+current_method = None  # จะเก็บ 'netconf' หรือ 'restconf'
+current_ip = None      # จะเก็บ IP ที่ผู้ใช้เลือก
+# ---------------------------
 
 while True:
     try:
@@ -75,172 +89,59 @@ while True:
 
 
         if message.startswith(f"/{MY_STUDENT_ID} "):
-
-            try:
-                command = message.split()[1]
-                student_id = MY_STUDENT_ID
-                print(f"Processing command: {command} for {student_id}")
-            except IndexError:
-                print("Message format error. Skipping.")
-                continue
-
             
-            # 5. Complete the logic for each command
-            if command == "create":
-                print(f"Checking status for Loopback{student_id}...")
-                current_status = netconf_final.status(student_id)
-                
-                if current_status == "not_exist":
-                    print(f"Interface does not exist. Attempting to create...")
-                    
-                    last_three_digits = student_id[-3:] 
-                    ip_x = last_three_digits[0]         
-                    ip_y = last_three_digits[1:]        
-                    
-                    create_result = netconf_final.create(student_id, ip_x, ip_y)
-                    
-                    if create_result == "ok":
-                        responseMessage = f"Interface loopback {student_id} is created successfully"
+            args = message.split()[1:] # แยกอาร์กิวเมนต์
+            command = None             # ตัวแปรเก็บคำสั่งที่จะรัน
+            responseMessage = ""       # ข้อความที่จะตอบกลับ
+
+            # --- A. PARSE COMMANDS ---
+            if len(args) == 0:
+                responseMessage = "Error: No command provided."
+            
+            elif len(args) == 1:
+                cmd_arg = args[0]
+                if cmd_arg == "netconf":
+                    current_method = "netconf"
+                    responseMessage = "Ok: Netconf"
+                elif cmd_arg == "restconf":
+                    current_method = "restconf"
+                    responseMessage = "Ok: Restconf"
+                elif cmd_arg == "gigabit_status":
+                    command = "gigabit_status" # รันคำสั่งนี้
+                elif cmd_arg == "showrun":
+                    command = "showrun" # รันคำสั่งนี้
+                elif cmd_arg in ["create", "delete", "enable", "disable", "status"]:
+                    # นี่คือคำสั่งที่ต้องมี IP
+                    if current_method is None:
+                        responseMessage = "Error: No method specified"
                     else:
-                        responseMessage = f"Error: Failed to create interface loopback {student_id}. Result: {create_result}"
+                        responseMessage = "Error: No IP specified"
+                elif is_ip_address(cmd_arg):
+                    # พิมพ์ IP แต่ไม่พิมพ์คำสั่ง
+                    responseMessage = "Error: No command found."
                 else:
-                    print(f"Interface already exists (Status: {current_status}).")
-                    responseMessage = f"Cannot create: Interface loopback {student_id}"    
+                    responseMessage = "Error: Unknown command."
             
-            elif command == "delete":
-                print(f"Checking status for Loopback{student_id}...")
-                current_status = netconf_final.status(student_id)
-                
-                if current_status != "not_exist":
-                    print(f"Interface exists (Status: {current_status}). Attempting to delete...")
-                    
-                    delete_result = netconf_final.delete(student_id)
-                    
-                    if delete_result == "ok":
-                        responseMessage = f"Interface loopback {student_id} is deleted successfully"
-                    else:
-                        responseMessage = f"Error: Failed to delete interface loopback {student_id}. Result: {delete_result}"
-                else:
-                    print(f"Interface Loopback{student_id} does not exist.")
-                    responseMessage = f"Cannot delete: Interface loopback {student_id}"
-            
-            elif command == "enable":
-                print(f"Checking status for Loopback{student_id}...")
-                current_status = netconf_final.status(student_id)
-                
-                if current_status != "not_exist":
-                    print(f"Interface exists (Status: {current_status}). Attempting to enable...")
-                    
-                    enable_result = netconf_final.enable(student_id)
-                    
-                    if enable_result == "ok":
-                        responseMessage = f"Interface loopback {student_id} is enabled successfully"
-                    else:
-                        responseMessage = f"Error: Failed to enable interface loopback {student_id}. Result: {enable_result}"
-                else:
-                    print(f"Interface Loopback{student_id} does not exist.")
-                    responseMessage = f"Cannot enable: Interface loopback {student_id}"
-            
-            elif command == "disable":
-                print(f"Checking status for Loopback{student_id}...")
-                current_status = netconf_final.status(student_id)
-                
-                if current_status != "not_exist":
-                    print(f"Interface exists (Status: {current_status}). Attempting to disable...")
-                    
-                    disable_result = netconf_final.disable(student_id)
-                    
-                    if disable_result == "ok":
-                        responseMessage = f"Interface loopback {student_id} is shutdowned successfully"
-                    else:
-                        responseMessage = f"Error: Failed to shutdown interface loopback {student_id}. Result: {disable_result}"
-                else:
-                    # 3. Interface does not exist
-                    print(f"Interface Loopback{student_id} does not exist.")
-                    responseMessage = f"Cannot shutdown: Interface loopback {student_id}"
-            
-            elif command == "status":
-                print(f"Checking status for Loopback{student_id}...")
-                current_status = netconf_final.status(student_id)
-                
-                if current_status == "exists_up_up":
-                    responseMessage = f"Interface loopback {student_id} is enabled"
-                
-                elif current_status == "exists_down_down":
-                    responseMessage = f"Interface loopback {student_id} is disabled"
-                
-                elif current_status == "not_exist":
-                    responseMessage = f"No Interface loopback {student_id}"
-                
-                else:
-                    responseMessage = f"Interface loopback {student_id} state is: {current_status}"
-            
-            elif command == "gigabit_status":
-                print("Processing gigabit_status command...")
-                responseMessage = netmiko_final.gigabit_status()
-            elif command == "showrun":
-                print("Processing showrun command...")
-                responseMessage = ansible_final.showrun()
-            else:
-                responseMessage = "Error: No command or unknown command"
-            
-            HTTPHeaders = {
-                "Authorization": f"Bearer {ACCESS_TOKEN}"
-            }
-            
-            # --- แก้ไขตรรกะตรงนี้ ---
-            if command == "showrun" and responseMessage == 'ok':
+            if responseMessage:
+                HTTPHeaders = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
-                filename = f"show_run_{MY_STUDENT_ID}_CSR1kv.txt"
-                
-                try:
-                    fileobject = open(filename, 'rb') 
-                    filetype = "text/plain" 
-                    
-                    postData_multipart = MultipartEncoder(
-                        fields={
-                            "roomId": roomIdToGetMessages,
-                            "text": "show running config", 
-                            "files": (filename, fileobject, filetype)
-                        }
-                    )
-                    
-                    postData = postData_multipart
-                    HTTPHeaders["Content-Type"] = postData_multipart.content_type
-
-                except Exception as e:
-                    print(f"Error preparing file {filename} for upload: {e}")
-
-                    responseMessage = f"Error: Ansible OK, but failed to read file {filename}."
-
-                    postData = json.dumps({
-                        "roomId": roomIdToGetMessages,
-                        "text": responseMessage
-                    })
-                    HTTPHeaders["Content-Type"] = "application/json"
-
-            else:
-                postData = json.dumps({
-                    "roomId": roomIdToGetMessages,
-                    "text": responseMessage
-                })
+                postData = json.dumps({"roomId": roomIdToGetMessages, "text": responseMessage})
                 HTTPHeaders["Content-Type"] = "application/json"
-
-            # Post the call to the Webex Teams message API.
-            r = requests.post(
-                "https://webexapis.com/v1/messages",
-                data=postData,
-                headers=HTTPHeaders,
-            )
-            
-            if not r.status_code == 200:
-                print(f"Error posting reply to Webex: {r.status_code}, {r.text}")
-                continue
-            
-            print(f"Successfully posted response: {responseMessage}")
-            
-            response_json = r.json()
-            last_processed_message_id = response_json["id"]
+                
+                # Post the call
+                r = requests.post(
+                    "https://webexapis.com/v1/messages",
+                    data=postData,
+                    headers=HTTPHeaders,
+                )
+                
+                if not r.status_code == 200:
+                    print(f"Error posting reply to Webex: {r.status_code}, {r.text}")
+                    continue
+                
+                print(f"Successfully posted response: {responseMessage}")
+                response_json = r.json()
+                last_processed_message_id = response_json["id"]
 
     except Exception as e:
         print(f"An unexpected error occurred in the main loop: {e}")
