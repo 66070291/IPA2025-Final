@@ -13,4 +13,4 @@
     - name: 2. Save config to local file
       ansible.builtin.copy:
         content: "{{ config_output.stdout[0] }}"
-        dest: "./show_run_66070291_{{ inventory_hostname }}.txt"
+        dest: "./show_run_66070291_{{ ansible_host }}.txt"

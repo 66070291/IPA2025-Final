@@ -1,7 +1,7 @@
 #######################################################################################
 # Yourname: Prem Lekphon
 # Your student ID: 66070291
-# Your GitHub Repo: https://github.com/66070291/IPA2024-Final
+# Your GitHub Repo: https://github.com/66070291/IPA2025-Final
 
 #######################################################################################
 # 1. Import libraries for API requests, JSON formatting, time, os, (restconf_final or netconf_final), netmiko_final, and ansible_final.
@@ -94,208 +94,202 @@ while True:
             args = message.split()[1:] # แยกอาร์กิวเมนต์
             command = None             # ตัวแปรเก็บคำสั่งที่จะรัน
             responseMessage = ""       # ข้อความที่จะตอบกลับ
+            target_ip = current_ip # ใช้ IP ล่าสุดเป็น default
 
             # --- A. PARSE COMMANDS ---
             if len(args) == 0:
                 responseMessage = "Error: No command provided."
             
             elif len(args) == 1:
-                cmd_arg = args[0]
-                if cmd_arg == "netconf":
-                    current_method = "netconf"
-                    responseMessage = "Ok: Netconf"
-                elif cmd_arg == "restconf":
-                    current_method = "restconf"
-                    responseMessage = "Ok: Restconf"
-                elif cmd_arg == "gigabit_status":
-                    command = "gigabit_status" # รันคำสั่งนี้
-                elif cmd_arg == "showrun":
-                    command = "showrun" # รันคำสั่งนี้
-                elif cmd_arg in ["create", "delete", "enable", "disable", "status"]:
-                    # นี่คือคำสั่งที่ต้องมี IP
-                    if current_method is None:
-                        responseMessage = "Error: No method specified"
-                    else:
-                        responseMessage = "Error: No IP specified"
-                elif is_ip_address(cmd_arg):
-                    # พิมพ์ IP แต่ไม่พิมพ์คำสั่ง
-                    responseMessage = "Error: No command found."
-                else:
-                    responseMessage = "Error: Unknown command."
-            
-            elif len(args) == 2:
-                ip_arg = args[0]
-                cmd_arg = args[1]
+                # Format: /<id> <setting_or_cmd_using_current_ip>
+                arg1 = args[0]
+                if arg1 == "netconf": current_method = "netconf"; responseMessage = "Ok: Netconf"
+                elif arg1 == "restconf": current_method = "restconf"; responseMessage = "Ok: Restconf"
+                # --- Commands using remembered IP ---
+                elif arg1 == "gigabit_status": command = "gigabit_status"; target_ip = current_ip # ใช้ IP ที่จำไว้
+                elif arg1 == "showrun": command = "showrun"; target_ip = current_ip # ใช้ IP ที่จำไว้
+                elif arg1 == "motd": command = "motd_get"; target_ip = current_ip # ใช้ IP ที่จำไว้
+                # --- Config commands require IP later ---
+                elif arg1 in ["create", "delete", "enable", "disable", "status"]:
+                    if current_method is None: responseMessage = "Error: No method specified"
+                    else: responseMessage = "Error: No IP specified"
+                elif is_ip_address(arg1): responseMessage = "Error: No command found."
+                else: responseMessage = f"Error: Unknown command or setting '{arg1}'."
+
+            elif len(args) >= 2: 
+                # Format: /<id> <ip> <cmd> [motd_msg...]
+                arg1 = args[0]
+                arg2 = args[1]
                 
-                if not is_ip_address(ip_arg):
-                    responseMessage = f"Error: Invalid IP address '{ip_arg}'."
-                elif cmd_arg not in ["create", "delete", "enable", "disable", "status"]:
-                    responseMessage = f"Error: Command '{cmd_arg}' does not support an IP address."
-                else:
-                    # OK! เราได้ IP และ Command
-                    command = cmd_arg
-                    current_ip = ip_arg # บันทึก IP ที่เลือก
-            
-            else: # len(args) > 2
-                responseMessage = "Error: Too many arguments."
-                
-            # --- B. EXECUTE COMMAND (ถ้ามี) ---
+                if is_ip_address(arg1):
+                    potential_ip = arg1
+                    potential_cmd = arg2
+                    
+                    allowed_cmds_with_ip = ["create", "delete", "enable", "disable", "status", 
+                                            "gigabit_status", "showrun", "motd"]
+                                            
+                    if potential_cmd in allowed_cmds_with_ip:
+                        target_ip = potential_ip  # --- 💡 กำหนด IP เป้าหมาย ---
+                        current_ip = potential_ip # --- 💡 จำ IP นี้ไว้ใช้ครั้งหน้า ---
+
+                        if potential_cmd == "motd":
+                            if len(args) > 2: command = "motd_set"; motd_text = parts[3]
+                            else: command = "motd_get"
+                        else: # Other commands
+                            if len(args) > 2: responseMessage = f"Error: Too many arguments for command '{potential_cmd}'."
+                            else: command = potential_cmd # --- ตั้งค่า command ที่จะรัน ---
+                    else: 
+                        responseMessage = f"Error: Unknown command '{potential_cmd}' or command does not support IP."
+                else: 
+                    responseMessage = f"Error: Invalid command structure. Expected IP after /{MY_STUDENT_ID}."
+            # --- B. EXECUTE COMMAN ---
             if command:
-                student_id = MY_STUDENT_ID # (student_id ยังคงใช้ MY_STUDENT_ID)
-
+                student_id = MY_STUDENT_ID 
+                
                 # -- NETCONF / RESTCONF Commands --
-                if command in ["create", "delete", "enable", "disable", "status"]:
-                    
-                    # Guard 1: เช็คว่าเลือก method หรือยัง
-                    if current_method is None:
-                        responseMessage = "Error: No method specified"
-                    
-                    # Guard 2: เช็คว่า IP (current_ip) ถูกตั้งค่าหรือยัง
-                    elif current_ip is None:
-                         # สภาวะนี้ไม่ควรเกิดถ้า parser ทำงานถูก แต่ดักไว้ก่อน
-                        responseMessage = "Error: No IP specified"
-                    
-                    # ---  NETCONF LOGIC  ---
-                    elif current_method == "netconf":
-                        print(f"Running '{command}' on {current_ip} using NETCONF...")
-                        
-                        if command == "create":
-                            current_status = netconf_final.status(current_ip, student_id)
-                            if current_status == "not_exist":
-                                last_three_digits = student_id[-3:] 
-                                ip_x = last_three_digits[0]         
-                                ip_y = last_three_digits[1:]        
-                                create_result = netconf_final.create(current_ip, student_id, ip_x, ip_y)
-                                if create_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is created successfully using Netconf"
-                                else:
-                                    responseMessage = f"Error: {create_result} (using Netconf)"
-                            else:
-                                responseMessage = f"Cannot create: Interface loopback {student_id} already created (checked by Netconf)"
+                ip_required_commands = ["create", "delete", "enable", "disable", "status", 
+                                       "gigabit_status", "showrun", "motd_get", "motd_set"]
+                method_required_commands = ["create", "delete", "enable", "disable", "status"]
 
-                        elif command == "delete":
-                            current_status = netconf_final.status(current_ip, student_id)
-                            if current_status != "not_exist":
-                                delete_result = netconf_final.delete(current_ip, student_id)
-                                if delete_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is deleted successfully using Netconf"
-                                else:
-                                    responseMessage = f"Error: {delete_result} (using Netconf)"
-                            else:
-                                responseMessage = f"Cannot delete: Interface loopback {student_id} (checked by Netconf)"
+                if command in ip_required_commands and target_ip is None:
+                    responseMessage = f"Error: No IP specified for command '{command}'."
+                    command = None # Prevent execution
                         
-                        elif command == "enable":
-                            current_status = netconf_final.status(current_ip, student_id)
-                            if current_status != "not_exist":
-                                enable_result = netconf_final.enable(current_ip, student_id)
-                                if enable_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is enabled successfully using Netconf"
-                                else:
-                                    responseMessage = f"Error: {enable_result} (using Netconf)"
-                            else:
-                                responseMessage = f"Cannot enable: Interface loopback {student_id} (checked by Netconf)"
+                elif command in method_required_commands and current_method is None:
+                    responseMessage = "Error: No method specified"
+                    command = None 
 
-                        elif command == "disable":
-                            current_status = netconf_final.status(current_ip, student_id)
-                            if current_status != "not_exist":
-                                disable_result = netconf_final.disable(current_ip, student_id)
-                                if disable_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is shutdowned successfully using Netconf"
-                                else:
-                                    responseMessage = f"Error: {disable_result} (using Netconf)"
-                            else:
-                                responseMessage = f"Cannot shutdown: Interface loopback {student_id} (checked by Netconf)"
-                        
-                        elif command == "status":
-                            current_status = netconf_final.status(current_ip, student_id)
-                            if current_status == "exists_up_up":
-                                responseMessage = f"Interface loopback {student_id} is enabled (checked by Netconf)"
-                            elif current_status == "exists_down_down":
-                                responseMessage = f"Interface loopback {student_id} is disabled (checked by Netconf)"
-                            elif current_status == "not_exist":
-                                responseMessage = f"No Interface loopback {student_id} (checked by Netconf)"
-                            else:
-                                responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Netconf)"
-                    # --- RESTCONF LOGIC ---
+                # --- Execute Logic ---
+                if command == "create":
+                    if current_method == "netconf":
+                        print(f"Running 'create' on {target_ip} using NETCONF...")
+                        current_status = netconf_final.status(target_ip, student_id)
+                        if current_status == "not_exist":
+                            last_three_digits=student_id[-3:]; ip_x=last_three_digits[0]; ip_y=last_three_digits[1:]
+                            create_result = netconf_final.create(target_ip, student_id, ip_x, ip_y)
+                            responseMessage = f"Interface loopback {student_id} is created successfully using Netconf" if create_result == "ok" else f"Error: {create_result} (using Netconf)"
+                        else: responseMessage = f"Cannot create: Interface loopback {student_id} already exists (checked by Netconf)" 
                     elif current_method == "restconf":
-                        print(f"Running '{command}' on {current_ip} using RESTCONF...")
-                        
-                        if command == "create":
-                            current_status = restconf_final.status(current_ip, student_id)
-                            if current_status == "not_exist":
-                                last_three_digits = student_id[-3:]
-                                ip_x = last_three_digits[0]
-                                ip_y = last_three_digits[1:]
-                                create_result = restconf_final.create(current_ip, student_id, ip_x, ip_y)
-                                if create_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is created successfully using Restconf"
-                                else:
-                                    responseMessage = f"Error: {create_result} (using Restconf)"
-                            else:
-                                responseMessage = f"Cannot create: Interface loopback {student_id} (checked by Restconf)"
+                        print(f"Running 'create' on {target_ip} using RESTCONF...")
+                        current_status = restconf_final.status(target_ip, student_id)
+                        if current_status == "not_exist":
+                            last_three_digits=student_id[-3:]; ip_x=last_three_digits[0]; ip_y=last_three_digits[1:]
+                            create_result = restconf_final.create(target_ip, student_id, ip_x, ip_y)
+                            responseMessage = f"Interface loopback {student_id} is created successfully using Restconf" if create_result == "ok" else f"Error: {create_result} (using Restconf)"
+                        else: responseMessage = f"Cannot create: Interface loopback {student_id} already exists (checked by Restconf)" 
 
-                        elif command == "delete":
-                            current_status = restconf_final.status(current_ip, student_id)
-                            if current_status != "not_exist":
-                                delete_result = restconf_final.delete(current_ip, student_id)
-                                if delete_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is deleted successfully using Restconf"
-                                else:
-                                    responseMessage = f"Error: {delete_result} (using Restconf)"
-                            else:
-                                responseMessage = f"Cannot delete: Interface loopback {student_id} (checked by Restconf)"
-                        elif command == "enable":
-                            current_status = restconf_final.status(current_ip, student_id)
-                            if current_status != "not_exist":
-                                enable_result = restconf_final.enable(current_ip, student_id)
-                                if enable_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is enabled successfully using Restconf"
-                                else:
-                                    responseMessage = f"Error: {enable_result} (using Restconf)"
-                            else:
-                                responseMessage = f"Cannot enable: Interface loopback {student_id} (checked by Restconf)"
+                elif command == "delete":
+                    if current_method == "netconf":
+                        print(f"Running 'delete' on {target_ip} using NETCONF...")
+                        current_status = netconf_final.status(target_ip, student_id)
+                        if current_status != "not_exist":
+                            delete_result = netconf_final.delete(target_ip, student_id)
+                            responseMessage = f"Interface loopback {student_id} is deleted successfully using Netconf" if delete_result == "ok" else f"Error: {delete_result} (using Netconf)"
+                        else: responseMessage = f"Cannot delete: Interface loopback {student_id} does not exist (checked by Netconf)" 
+                    elif current_method == "restconf":
+                        print(f"Running 'delete' on {target_ip} using RESTCONF...")
+                        current_status = restconf_final.status(target_ip, student_id)
+                        if current_status != "not_exist":
+                            delete_result = restconf_final.delete(target_ip, student_id)
+                            responseMessage = f"Interface loopback {student_id} is deleted successfully using Restconf" if delete_result == "ok" else f"Error: {delete_result} (using Restconf)"
+                        else: responseMessage = f"Cannot delete: Interface loopback {student_id} does not exist (checked by Restconf)" 
 
-                        elif command == "disable":
-                            current_status = restconf_final.status(current_ip, student_id)
-                            if current_status != "not_exist":
-                                disable_result = restconf_final.disable(current_ip, student_id)
-                                if disable_result == "ok":
-                                    responseMessage = f"Interface loopback {student_id} is shutdowned successfully using Restconf"
-                                else:
-                                    responseMessage = f"Error: {disable_result} (using Restconf)"
-                            else:
-                                responseMessage = f"Cannot shutdown: Interface loopback {student_id} (checked by Restconf)"
-                        
-                        elif command == "status":
-                            current_status = restconf_final.status(current_ip, student_id)
-                            if current_status == "exists_up_up":
-                                responseMessage = f"Interface loopback {student_id} is enabled (checked by Restconf)"
-                            elif current_status == "exists_down_down":
-                                responseMessage = f"Interface loopback {student_id} is disabled (checked by Restconf)"
-                            elif current_status == "not_exist":
-                                responseMessage = f"No Interface loopback {student_id} (checked by Restconf)"
-                            else:
-                                responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Restconf)"
+                elif command == "enable":
+                     if current_method == "netconf":
+                        print(f"Running 'enable' on {target_ip} using NETCONF...")
+                        current_status = netconf_final.status(target_ip, student_id)
+                        if current_status != "not_exist":
+                            enable_result = netconf_final.enable(target_ip, student_id)
+                            responseMessage = f"Interface loopback {student_id} is enabled successfully using Netconf" if enable_result == "ok" else f"Error: {enable_result} (using Netconf)"
+                        else: responseMessage = f"Cannot enable: Interface loopback {student_id} does not exist (checked by Netconf)" 
+                     elif current_method == "restconf":
+                        print(f"Running 'enable' on {target_ip} using RESTCONF...")
+                        current_status = restconf_final.status(target_ip, student_id)
+                        if current_status != "not_exist":
+                            enable_result = restconf_final.enable(target_ip, student_id)
+                            responseMessage = f"Interface loopback {student_id} is enabled successfully using Restconf" if enable_result == "ok" else f"Error: {enable_result} (using Restconf)"
+                        else: responseMessage = f"Cannot enable: Interface loopback {student_id} does not exist (checked by Restconf)" 
+
+                elif command == "disable":
+                    if current_method == "netconf":
+                        print(f"Running 'disable' on {target_ip} using NETCONF...")
+                        current_status = netconf_final.status(target_ip, student_id)
+                        if current_status != "not_exist":
+                            disable_result = netconf_final.disable(target_ip, student_id)
+                            responseMessage = f"Interface loopback {student_id} is shutdowned successfully using Netconf" if disable_result == "ok" else f"Error: {disable_result} (using Netconf)"
+                        else: responseMessage = f"Cannot shutdown: Interface loopback {student_id} does not exist (checked by Netconf)" 
+                    elif current_method == "restconf":
+                        print(f"Running 'disable' on {target_ip} using RESTCONF...")
+                        current_status = restconf_final.status(target_ip, student_id)
+                        if current_status != "not_exist":
+                            disable_result = restconf_final.disable(target_ip, student_id)
+                            responseMessage = f"Interface loopback {student_id} is shutdowned successfully using Restconf" if disable_result == "ok" else f"Error: {disable_result} (using Restconf)"
+                        else: responseMessage = f"Cannot shutdown: Interface loopback {student_id} does not exist (checked by Restconf)" 
+
+                elif command == "status":
+                    if current_method == "netconf":
+                        print(f"Running 'status' on {target_ip} using NETCONF...")
+                        current_status = netconf_final.status(target_ip, student_id)
+                        if current_status == "exists_up_up": responseMessage = f"Interface loopback {student_id} is enabled (checked by Netconf)"
+                        elif current_status == "exists_down_down": responseMessage = f"Interface loopback {student_id} is disabled (checked by Netconf)"
+                        elif current_status == "not_exist": responseMessage = f"No Interface loopback {student_id} (checked by Netconf)"
+                        else: responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Netconf)"
+                    elif current_method == "restconf":
+                        print(f"Running 'status' on {target_ip} using RESTCONF...")
+                        current_status = restconf_final.status(target_ip, student_id)
+                        if current_status == "exists_up_up": responseMessage = f"Interface loopback {student_id} is enabled (checked by Restconf)"
+                        elif current_status == "exists_down_down": responseMessage = f"Interface loopback {student_id} is disabled (checked by Restconf)"
+                        elif current_status == "not_exist": responseMessage = f"No Interface loopback {student_id} (checked by Restconf)"
+                        else: responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Restconf)"
+
+                
+                # --- showrun ansible ---
+                elif command == "showrun":
+                    print(f"Running 'showrun' on {target_ip} using Ansible...")
+                    ansible_result = ansible_final.showrun(target_ip) 
+                    responseMessage = ansible_result # Store result ("ok" or "Error...")
+
             if responseMessage:
                 HTTPHeaders = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
-                postData = json.dumps({"roomId": roomIdToGetMessages, "text": responseMessage})
-                HTTPHeaders["Content-Type"] = "application/json"
-                
-                # Post the call
-                r = requests.post(
-                    "https://webexapis.com/v1/messages",
-                    data=postData,
-                    headers=HTTPHeaders,
-                )
+                if command == "showrun" and responseMessage == 'ok':
+                    # Determine inventory hostname based on target_ip (Simple mapping for now)
+                    # THIS IS A SIMPLIFICATION - A real app might need a proper inventory lookup
+                    inventory_hostname = "CSR1KV" if target_ip == "192.168.1.101" else target_ip # Basic guess
+                    
+                    filename = f"show_run_{MY_STUDENT_ID}_{inventory_hostname}.txt"
+                    
+                    try:
+                        fileobject = open(filename, 'rb')
+                        filetype = "text/plain"
+                        postData_multipart = MultipartEncoder(fields={"roomId": roomIdToGetMessages, "text": "show running config", "files": (filename, fileobject, filetype)})
+                        postData = postData_multipart
+                        HTTPHeaders["Content-Type"] = postData_multipart.content_type
+                        
+                        # Store the actual message to print upon success
+                        actual_response_text = f"showrun file {filename} attached" 
+                        
+                    except Exception as e:
+                        print(f"Error preparing file {filename} for upload: {e}")
+                        responseMessage = f"Error: Ansible OK, but failed to read file {filename}."
+                        postData = json.dumps({"roomId": roomIdToGetMessages, "text": responseMessage})
+                        HTTPHeaders["Content-Type"] = "application/json"
+                        actual_response_text = responseMessage # Store error message
+                else:
+                    postData = json.dumps({"roomId": roomIdToGetMessages, "text": responseMessage})
+                    HTTPHeaders["Content-Type"] = "application/json"
+                    actual_response_text = responseMessage # Store the message
+
+                # --- Post the message ---
+                r = requests.post("https://webexapis.com/v1/messages", data=postData, headers=HTTPHeaders)
                 
                 if not r.status_code == 200:
                     print(f"Error posting reply to Webex: {r.status_code}, {r.text}")
-                    continue
-                
-                print(f"Successfully posted response: {responseMessage}")
-                response_json = r.json()
-                last_processed_message_id = response_json["id"]
+                    # Don't update last_processed_message_id on post failure
+                else:
+                    print(f"Successfully posted response: {actual_response_text}") # Print the actual text sent
+                    response_json = r.json()
+                    last_processed_message_id = response_json["id"]
 
     except Exception as e:
         print(f"An unexpected error occurred in the main loop: {e}")
