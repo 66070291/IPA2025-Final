@@ -13,6 +13,7 @@ import os
 import netconf_final 
 import netmiko_final
 import ansible_final
+import restconf_final
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from dotenv import load_dotenv
 
@@ -154,7 +155,7 @@ while True:
                          # สภาวะนี้ไม่ควรเกิดถ้า parser ทำงานถูก แต่ดักไว้ก่อน
                         responseMessage = "Error: No IP specified"
                     
-                    # --- 💡 NETCONF LOGIC 💡 ---
+                    # ---  NETCONF LOGIC  ---
                     elif current_method == "netconf":
                         print(f"Running '{command}' on {current_ip} using NETCONF...")
                         
@@ -215,7 +216,45 @@ while True:
                                 responseMessage = f"No Interface loopback {student_id} (checked by Netconf)"
                             else:
                                 responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Netconf)"
+                    # --- RESTCONF LOGIC ---
+                    elif current_method == "restconf":
+                        print(f"Running '{command}' on {current_ip} using RESTCONF...")
+                        
+                        if command == "create":
+                            current_status = restconf_final.status(current_ip, student_id)
+                            if current_status == "not_exist":
+                                last_three_digits = student_id[-3:]
+                                ip_x = last_three_digits[0]
+                                ip_y = last_three_digits[1:]
+                                create_result = restconf_final.create(current_ip, student_id, ip_x, ip_y)
+                                if create_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is created successfully using Restconf"
+                                else:
+                                    responseMessage = f"Error: {create_result} (using Restconf)"
+                            else:
+                                responseMessage = f"Cannot create: Interface loopback {student_id} (checked by Restconf)"
 
+                        elif command == "delete":
+                            current_status = restconf_final.status(current_ip, student_id)
+                            if current_status != "not_exist":
+                                delete_result = restconf_final.delete(current_ip, student_id)
+                                if delete_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is deleted successfully using Restconf"
+                                else:
+                                    responseMessage = f"Error: {delete_result} (using Restconf)"
+                            else:
+                                responseMessage = f"Cannot delete: Interface loopback {student_id} (checked by Restconf)"
+
+                        elif command == "status":
+                            current_status = restconf_final.status(current_ip, student_id)
+                            if current_status == "exists_up_up":
+                                responseMessage = f"Interface loopback {student_id} is enabled (checked by Restconf)"
+                            elif current_status == "exists_down_down":
+                                responseMessage = f"Interface loopback {student_id} is disabled (checked by Restconf)"
+                            elif current_status == "not_exist":
+                                responseMessage = f"No Interface loopback {student_id} (checked by Restconf)"
+                            else:
+                                responseMessage = f"Interface loopback {student_id} state is: {current_status} (checked by Restconf)"
             if responseMessage:
                 HTTPHeaders = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
