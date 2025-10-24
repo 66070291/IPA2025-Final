@@ -122,6 +122,22 @@ while True:
                 else:
                     responseMessage = "Error: Unknown command."
             
+            elif len(args) == 2:
+                ip_arg = args[0]
+                cmd_arg = args[1]
+                
+                if not is_ip_address(ip_arg):
+                    responseMessage = f"Error: Invalid IP address '{ip_arg}'."
+                elif cmd_arg not in ["create", "delete", "enable", "disable", "status"]:
+                    responseMessage = f"Error: Command '{cmd_arg}' does not support an IP address."
+                else:
+                    # OK! เราได้ IP และ Command
+                    command = cmd_arg
+                    current_ip = ip_arg # บันทึก IP ที่เลือก
+            
+            else: # len(args) > 2
+                responseMessage = "Error: Too many arguments."
+                
             if responseMessage:
                 HTTPHeaders = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
