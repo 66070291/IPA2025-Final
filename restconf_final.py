@@ -95,6 +95,67 @@ def delete(host_ip, student_id):
         print(f"Error in delete({host_ip}). Status Code: {resp.status_code}, Text: {resp.text}")
         return f"Error: {resp.status_code}, {resp.text}"
 
+def enable(host_ip, student_id):
+    """
+    Enable Interface (ใช้ HTTP PATCH)
+    """
+    api_url = _get_config_url(host_ip, student_id)
+    loopback_name = f"Loopback{student_id}"
+    
+    # PATCH payload จะส่งแค่ส่วนที่ต้องการเปลี่ยน
+    yangConfig = {
+      "ietf-interfaces:interface": {
+        "name": loopback_name,
+        "enabled": True
+      }
+    }
+
+    resp = requests.patch(
+        api_url, 
+        data=json.dumps(yangConfig), 
+        auth=basicauth, 
+        headers=headers_post_put_patch, 
+        verify=False
+    )
+
+    if(resp.status_code == 200 or resp.status_code == 204):
+        # 200 = OK, 204 = No Content
+        print("STATUS OK: {}".format(resp.status_code))
+        return "ok"
+    else:
+        print(f"Error in enable({host_ip}). Status Code: {resp.status_code}, Text: {resp.text}")
+        return f"Error: {resp.status_code}, {resp.text}"
+
+
+def disable(host_ip, student_id):
+    """
+    Disable Interface (ใช้ HTTP PATCH)
+    """
+    api_url = _get_config_url(host_ip, student_id)
+    loopback_name = f"Loopback{student_id}"
+
+    yangConfig = {
+      "ietf-interfaces:interface": {
+        "name": loopback_name,
+        "enabled": False
+      }
+    }
+
+    resp = requests.patch(
+        api_url, 
+        data=json.dumps(yangConfig), 
+        auth=basicauth, 
+        headers=headers_post_put_patch, 
+        verify=False
+    )
+
+    if(resp.status_code == 200 or resp.status_code == 204):
+        print("STATUS OK: {}".format(resp.status_code))
+        return "ok"
+    else:
+        print(f"Error in disable({host_ip}). Status Code: {resp.status_code}, Text: {resp.text}")
+        return f"Error: {resp.status_code}, {resp.text}"
+
 def status(host_ip, student_id):
     """
     ตรวจสอบสถานะ Interface (ใช้ HTTP GET จาก operational datastore)

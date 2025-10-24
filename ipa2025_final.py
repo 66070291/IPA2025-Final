@@ -244,7 +244,28 @@ while True:
                                     responseMessage = f"Error: {delete_result} (using Restconf)"
                             else:
                                 responseMessage = f"Cannot delete: Interface loopback {student_id} (checked by Restconf)"
+                        elif command == "enable":
+                            current_status = restconf_final.status(current_ip, student_id)
+                            if current_status != "not_exist":
+                                enable_result = restconf_final.enable(current_ip, student_id)
+                                if enable_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is enabled successfully using Restconf"
+                                else:
+                                    responseMessage = f"Error: {enable_result} (using Restconf)"
+                            else:
+                                responseMessage = f"Cannot enable: Interface loopback {student_id} (checked by Restconf)"
 
+                        elif command == "disable":
+                            current_status = restconf_final.status(current_ip, student_id)
+                            if current_status != "not_exist":
+                                disable_result = restconf_final.disable(current_ip, student_id)
+                                if disable_result == "ok":
+                                    responseMessage = f"Interface loopback {student_id} is shutdowned successfully using Restconf"
+                                else:
+                                    responseMessage = f"Error: {disable_result} (using Restconf)"
+                            else:
+                                responseMessage = f"Cannot shutdown: Interface loopback {student_id} (checked by Restconf)"
+                        
                         elif command == "status":
                             current_status = restconf_final.status(current_ip, student_id)
                             if current_status == "exists_up_up":
