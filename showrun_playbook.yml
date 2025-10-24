@@ -1,0 +1,16 @@
+---
+- name: Backup Running Config
+  hosts: routers
+  gather_facts: false
+
+  tasks:
+    - name: 1. Get running-config from device
+      cisco.ios.ios_command:
+        commands:
+          - show running-config
+      register: config_output
+
+    - name: 2. Save config to local file
+      ansible.builtin.copy:
+        content: "{{ config_output.stdout[0] }}"
+        dest: "./show_run_66070291_{{ inventory_hostname }}.txt"
